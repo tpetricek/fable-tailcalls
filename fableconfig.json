@@ -1,0 +1,4 @@
+{
+    "module": "commonjs",
+    "plugins": ["bin/Debug/Fable.Plugins.TailCalls.dll"]
+}
