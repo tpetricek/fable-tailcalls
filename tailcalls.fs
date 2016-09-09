@@ -111,6 +111,10 @@ let calculateRecursiveGroups ctx =
 // Generating loops from tail-recursive calls
 // --------------------------------------------------------------------------------------
 
+let hasTail = function
+  | [] | [_] -> false
+  | _ -> true 
+
 let generateGroupFunction ctx (group:string list) =
   let id n = { name=n; typ=Type.Any }
   let funcId = { name="_letrecFunction"; typ=Type.String }
@@ -120,12 +124,17 @@ let generateGroupFunction ctx (group:string list) =
   // continue is added after the call to the function (in pattern matching)
   let makeTailCall insertContinue name args = 
     let vars, _, _ = ctx.TopLevel.[name]
-    let assigns = List.zip vars args
+    let assigns =
+      [0..vars.Length-1]
+      |> List.map (fun i -> "$tmp" + (string i) |> Fable.Util.makeIdent)
+      |> List.zip3 vars args
     Expr.Sequential
-      ( [ if not group.Tail.IsEmpty then
+      ( [ if hasTail group then
             yield Set(Value(IdentValue funcId), None, Value(StringConst name), None)
-          for var, expr in assigns do
-            yield Set(Value(IdentValue var), None, expr, None)
+          for _,expr,tempVar in assigns do
+            yield VarDeclaration(tempVar, expr, true)
+          for var,_,tempVar in assigns do
+            yield Set(Value(IdentValue var), None, Value(IdentValue tempVar), None)
           if insertContinue then
             yield Expr.Continue(Some(id "_letrec"), None) ], None)
 
@@ -177,7 +186,7 @@ let generateGroupFunction ctx (group:string list) =
   let loc = 
     group 
     |> List.map (fun n -> let _, _, l = ctx.TopLevel.[n] in l) 
-    |> List.reduce (+)
+    |> function [] -> SourceLocation.Empty | xs -> List.reduce (+) xs
 
   // Generate new function that takes union of the arguments
   let name = group |> String.concat "_"
@@ -186,7 +195,7 @@ let generateGroupFunction ctx (group:string list) =
     |> List.collect (fun g -> let a, _, _ = ctx.TopLevel.[g] in a)
     |> List.groupBy (fun i -> i.name)
     |> List.map (function n, [g] -> g | n, _ -> { name=n; typ=Type.Any })
-  let appendMulti e l = if group.Tail.IsEmpty then l else e::l
+  let appendMulti e l = if not(hasTail group) then l else e::l
   name, args, 
     MemberDeclaration
       ( Member(name, Method, appendMulti String [for a in args -> a.typ], Type.Any), 
@@ -220,7 +229,7 @@ let transform file =
   // Get recursive groups, generate functions for them
   let groups = calculateRecursiveGroups ctx
   let funcs = groups |> List.map (fun g -> g, generateGroupFunction ctx g)
-  let declLookup = Map.ofList [ for g, (_, _, f) in funcs -> List.head g, f ]
+  let declLookup = Map.ofList [ for g, (_, _, f) in funcs -> defaultArg (List.tryHead g) "", f ]
   let replaceLookup = Map.ofList [ for g, (nn, a, _) in funcs do for n in g -> n, (nn, a) ]
   let singleRecFunc = groups |> List.choose (function [s] -> Some s | _ -> None) |> set
 
