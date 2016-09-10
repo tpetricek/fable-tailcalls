@@ -1,5 +1,13 @@
 module Test2
 
+let rec sum v m s =
+    if v >= m
+    then s
+    else sum (v + 1L) m (s + v)
+
+printfn "sum 0 10000L 0 -> %d" (sum 0L 10000L 0L)
+printfn "(must be equal to 49995000)"
+
 let rec factorial aux n =
   if n = 0 then aux
   else factorial (aux * n) (n - 1)
